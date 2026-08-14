@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>AIRI Vietnamese Speech</title>
+  <style>
+    :root{--bg:#0b1020;--card:#141b31;--border:#283355;--text:#eef2ff;--muted:#aeb9d9;--accent:#8175ff;--danger:#ed6a7a}
+    *{box-sizing:border-box} body{margin:0;background:radial-gradient(circle at top right,#26366a 0,#0b1020 40%);color:var(--text);font:15px system-ui,Segoe UI,sans-serif;min-height:100vh}
+    main{max-width:1080px;margin:auto;padding:40px 20px 64px}.eyebrow{color:#b9b2ff;letter-spacing:.12em;font-size:12px;font-weight:700}h1{margin:8px 0;font-size:34px}p{color:var(--muted);margin-top:0}.grid{display:grid;grid-template-columns:1.35fr .85fr;gap:18px}.card{background:rgba(20,27,49,.9);border:1px solid var(--border);border-radius:18px;padding:20px;box-shadow:0 12px 30px #0003}.card h2{font-size:18px;margin:0 0 8px}.wide{grid-column:1/-1}label{display:block;color:var(--muted);font-size:13px;margin:15px 0 5px}textarea,input,select,button{font:inherit;border-radius:10px}textarea,input,select{width:100%;padding:11px 12px;background:#0d1428;color:var(--text);border:1px solid #374467}textarea{resize:vertical}button{border:0;padding:11px 14px;background:var(--accent);color:white;font-weight:700;cursor:pointer;margin-top:14px}button:hover{filter:brightness(1.12)}button.ghost{background:transparent;border:1px solid #4b5c87;color:#dce2ff;padding:7px 10px;margin:0}button.danger{border-color:#a5485b;color:#ffb7c0}.row{display:flex;gap:12px;align-items:end}.row>*{flex:1}.drop{border:1px dashed #6876a9;border-radius:12px;padding:18px;text-align:center;color:var(--muted);margin-top:14px}.voice-list{margin-top:12px;display:grid;gap:8px}.voice{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #263151}.voice:last-child{border:0}.voice-info{flex:1}.voice-info small{color:var(--muted)}.pill{font-size:11px;background:#29335a;border-radius:999px;padding:3px 7px;margin-left:5px}.status{margin:12px 0 0;color:var(--muted);min-height:20px}.error{color:#ffb4bf}.ok{color:#9ff0b6}audio{width:100%;margin-top:14px}pre{white-space:pre-wrap;margin:14px 0 0;padding:12px;background:#0d1428;border-radius:10px;color:#d7e0ff;min-height:48px}@media(max-width:760px){.grid{grid-template-columns:1fr}.row{display:block}.row>*{margin-top:10px}}
+  </style>
+</head>
+<body><main>
+  <div class="eyebrow">LOCAL • VIE NEU • AIRI READY</div><h1>AIRI Vietnamese Speech</h1>
+  <p>Tạo tiếng nói, clone WAV và chép lời audio trên máy của bạn.</p>
+  <div class="grid">
+    <section class="card wide"><h2>Kết nối AIRI</h2><p>Trong AIRI, chọn OpenAI Compatible TTS rồi nhập các thông số dưới đây. Khi AIRI gọi server, trạng thái sẽ tự hiện ở đây.</p>
+      <div class="row"><div><label>Base URL</label><input id="airiBase" value="http://127.0.0.1:23333/v1/" readonly></div><div><label>API key</label><input id="airiKey" value="airi-local" readonly></div><div><label>Model</label><input id="airiModel" value="vieneu-tts-v3-turbo" readonly></div></div>
+      <button onclick="copyAiriSettings()">Sao chép thông số AIRI</button><button class="ghost" onclick="checkConnection()">Kiểm tra kết nối</button><div id="connectionStatus" class="status">Đang chờ AIRI kết nối…</div>
+    </section>
+    <section class="card"><h2>Text to Speech</h2>
+      <label for="text">Nội dung</label><textarea id="text" rows="6">Xin chào, mình là AIRI. Đây là giọng tiếng Việt chạy local.</textarea>
+      <div class="row"><div><label for="voice">Giọng đọc</label><select id="voice"></select></div><div><label for="speed">Tốc độ</label><select id="speed"><option value="0.8">0.8×</option><option value="1" selected>1.0×</option><option value="1.2">1.2×</option><option value="1.4">1.4×</option></select></div></div>
+      <button onclick="speak()">▶ Tạo và phát audio</button><div id="ttsStatus" class="status"></div><audio id="audio" controls></audio>
+    </section>
+    <section class="card"><h2>Clone voice từ WAV</h2><p>Dùng đoạn nói rõ, một người nói, khoảng 3–10 giây.</p>
+      <label for="name">Tên giọng</label><input id="name" placeholder="Ví dụ: Giọng của tôi">
+      <label class="drop" for="wav">Chọn file WAV<input id="wav" type="file" accept="audio/wav,.wav" hidden><span id="fileName">Chưa chọn file</span></label>
+      <button onclick="cloneVoice()">＋ Clone voice</button><div id="cloneStatus" class="status"></div>
+    </section>
+    <section class="card wide"><h2>Danh sách giọng</h2><p>Giọng clone được lưu lại và vẫn có sau khi khởi động lại server.</p><div id="voiceList" class="voice-list"></div></section>
+    <section class="card wide"><h2>Speech to Text</h2><p>Lần đầu dùng STT, Whisper sẽ tải model local (mặc định: <code>base</code>). STT chạy CPU để không cần cài CUDA/NVIDIA.</p>
+      <div class="row"><div><label for="sttFile">Audio</label><input id="sttFile" type="file" accept="audio/*"></div><div><label for="sttTask">Chế độ</label><select id="sttTask"><option value="transcribe">Chép lời tiếng Việt</option><option value="translate">Dịch sang tiếng Anh</option></select></div></div>
+      <button onclick="transcribe()">Chép lời audio</button><div id="sttStatus" class="status"></div><pre id="transcript">Bản chép lời sẽ xuất hiện ở đây.</pre>
+    </section>
+  </div>
+</main>
+<script>
+const auth={Authorization:"Bearer airi-local","X-AIRI-Speech-UI":"1"};
+const $=id=>document.getElementById(id);
+function status(id,msg,kind=""){const e=$(id);e.textContent=msg;e.className="status "+kind}
+async function api(path,options={}){const headers={...auth,...(options.headers||{})};const response=await fetch(path,{...options,headers});if(!response.ok)throw new Error((await response.text()).replace(/^\{"detail":"?/,"").replace(/"?\}$/,""));return response}
+async function refresh(){try{const j=await (await api('/v1/voices')).json();$('voice').innerHTML='';$('voiceList').innerHTML='';j.data.forEach(v=>{const o=document.createElement('option');o.value=v.id;o.textContent=`${v.name} (${v.id})`;$('voice').appendChild(o);const item=document.createElement('div');item.className='voice';item.innerHTML=`<div class="voice-info"><strong>${v.name}</strong><small> ${v.id}</small><span class="pill">${v.type}</span></div><button class="ghost">▶ Test</button>`;item.querySelector('button').onclick=()=>{ $('voice').value=v.id; speak() };if(v.type==='cloned'){const d=document.createElement('button');d.className='ghost danger';d.textContent='Xóa';d.onclick=()=>deleteVoice(v.id,v.name);item.appendChild(d)}$('voiceList').appendChild(item)})}catch(e){status('ttsStatus','Không kết nối được server: '+e.message,'error')}}
+async function checkConnection(){try{const j=await (await api('/api/connection-status')).json();const last=j.last_airi_request;if(last){status('connectionStatus',`✓ AIRI/ứng dụng ngoài đã kết nối: ${last.endpoint} · ${last.user_agent}`,'ok')}else{status('connectionStatus','Server đang chạy, nhưng chưa thấy request nào từ AIRI. Lưu cấu hình trong AIRI rồi bấm kiểm tra lại.')}}catch(e){status('connectionStatus','Không kiểm tra được: '+e.message,'error')}}
+async function copyAiriSettings(){const value=`Base URL: ${$('airiBase').value}\nAPI key: ${$('airiKey').value}\nModel: ${$('airiModel').value}\nVoice: ${$('voice').value||'truc-ly'}`;try{await navigator.clipboard.writeText(value);status('connectionStatus','Đã sao chép thông số. Dán vào OpenAI Compatible TTS trong AIRI.','ok')}catch(e){status('connectionStatus',value)}}
+async function speak(){status('ttsStatus','Đang tạo audio…');try{const r=await api('/v1/audio/speech',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'vieneu-tts-v3-turbo',input:$('text').value,voice:$('voice').value,response_format:'wav',speed:Number($('speed').value),style:'tu_nhien'})});$('audio').src=URL.createObjectURL(await r.blob());await $('audio').play();status('ttsStatus','Đã tạo audio.','ok')}catch(e){status('ttsStatus',e.message,'error')}}
+$('wav').onchange=()=>$('fileName').textContent=$('wav').files[0]?.name||'Chưa chọn file';
+async function cloneVoice(){if(!$('wav').files[0]||!$('name').value.trim())return status('cloneStatus','Hãy chọn WAV và nhập tên giọng.','error');status('cloneStatus','Đang clone voice…');try{const f=new FormData();f.append('name',$('name').value.trim());f.append('file',$('wav').files[0]);await api('/api/voices/clone',{method:'POST',body:f});$('name').value='';$('wav').value='';$('fileName').textContent='Chưa chọn file';await refresh();status('cloneStatus','Clone voice thành công.','ok')}catch(e){status('cloneStatus',e.message,'error')}}
+async function deleteVoice(id,name){if(!confirm(`Xóa giọng “${name}”?`))return;try{await api('/api/voices/'+encodeURIComponent(id),{method:'DELETE'});await refresh()}catch(e){alert(e.message)}}
+async function transcribe(){const file=$('sttFile').files[0];if(!file)return status('sttStatus','Hãy chọn một file audio.','error');status('sttStatus','Đang chép lời… lần đầu có thể mất thời gian tải model.');try{const f=new FormData();f.append('file',file);f.append('language','vi');f.append('task',$('sttTask').value);const j=await (await api('/api/transcribe',{method:'POST',body:f})).json();$('transcript').textContent=j.text||'(Không nhận ra lời nói)';status('sttStatus',`Hoàn thành · ngôn ngữ: ${j.language||'vi'}`,'ok')}catch(e){status('sttStatus',e.message,'error')}}
+refresh();checkConnection();setInterval(checkConnection,5000);
+</script></body></html>
