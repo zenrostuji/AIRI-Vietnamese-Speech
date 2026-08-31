@@ -1,4 +1,4 @@
-"""Native desktop entry point for AIRI Vietnamese Speech."""
+"""Native Windows desktop entry point for AIRI Vietnamese Speech."""
 from __future__ import annotations
 
 import threading
@@ -17,7 +17,7 @@ if __name__ == "__main__":
     try:
         import webview
     except ImportError as exc:
-        raise SystemExit("pywebview is missing. Run the platform start script to install it.") from exc
+        raise SystemExit("pywebview is missing. Run start-ui.bat once to install it.") from exc
 
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=23333, log_level="warning"))
     thread = threading.Thread(target=run_server, args=(server,), daemon=True)

@@ -26,34 +26,6 @@ Ngay trong UI app có thẻ **Kết nối AIRI** để sao chép các thông s�
 
 Bạn có thể dùng UI để xem ID chính xác của mọi voice. AIRI dùng ID (`truc-ly`), còn server tự đổi thành tên VieNeu (`Trúc Ly`). Voice clone sẽ có ID ổn định, ví dụ `giong-cua-toi`.
 
-## Linux Mint
-
-### Chạy từ source
-
-```bash
-chmod +x scripts/start_linux.sh
-./scripts/start_linux.sh
-```
-
-Nếu thiếu WebKit/GTK, cài một lần:
-
-```bash
-sudo apt update
-sudo apt install python3-venv python3-gi gir1.2-webkit2-4.0 ffmpeg espeak-ng
-```
-
-### Build và cài `.deb`
-
-Trên Linux Mint, trong thư mục source:
-
-```bash
-chmod +x build-linux-mint-deb.sh
-./build-linux-mint-deb.sh
-sudo apt install ./dist/airi-vietnamese-speech_0.1.0_all.deb
-```
-
-Sau khi cài, mở **AIRI Vietnamese Speech** từ menu ứng dụng. Lần mở đầu cần mạng để cài các package Python và tải model; các lần sau chạy local.
-
 ## Clone voice
 
 Mở UI, nhập tên, chọn WAV và bấm **Clone voice**. WAV nên là một người nói rõ ràng, ít noise, dài khoảng 3–10 giây. Voice clone được lưu tại `~/.airi-vietnamese-speech/voices` và được nạp lại sau khi restart.

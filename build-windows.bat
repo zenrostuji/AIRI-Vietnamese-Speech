@@ -10,7 +10,7 @@ if not exist ".venv\Scripts\python.exe" (
 if errorlevel 1 (
   .venv\Scripts\python.exe -m pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu || exit /b 1
 )
-.venv\Scripts\pyinstaller.exe --noconfirm --clean --onedir --windowed --name "AIRI Vietnamese Speech" --add-data "ui;ui" --collect-all vieneu --collect-all faster_whisper --collect-all ctranslate2 --collect-all webview --collect-all torch --collect-all torchaudio launcher.py
+.venv\Scripts\pyinstaller.exe --noconfirm --clean "AIRI Vietnamese Speech.spec"
 echo.
 echo Built: dist\AIRI Vietnamese Speech\AIRI Vietnamese Speech.exe
 pause
