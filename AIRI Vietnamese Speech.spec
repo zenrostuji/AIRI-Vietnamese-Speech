@@ -18,6 +18,8 @@ tmp_ret = collect_all('torch')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all('torchaudio')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+tmp_ret = collect_all('sea_g2p')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 
 a = Analysis(
@@ -29,7 +31,13 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    # v3 turbo is forced to CPU/ONNX. These optional GPU/data-science stacks are
+    # not used by the server and make the portable build much larger/slower.
+    excludes=[
+        'accelerate', 'cupy', 'dask', 'IPython', 'jax', 'jupyter', 'librosa', 'lmdeploy',
+        'matplotlib', 'numba', 'pandas', 'peft', 'scipy', 'sklearn', 'tensorflow', 'transformers',
+        'torch.distributed', 'torch.testing',
+    ],
     noarchive=False,
     optimize=0,
 )

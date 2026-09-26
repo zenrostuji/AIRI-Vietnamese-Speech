@@ -1,56 +1,74 @@
 # AIRI Vietnamese Speech
 
-Máy chủ tiếng Việt chạy local cho AIRI, dùng VieNeu TTS. Bản này có web UI để tạo TTS, clone WAV, quản lý voice clone và chép lời audio (STT).
+Ứng dụng giọng nói tiếng Việt chạy local cho AIRI Desktop:
 
-## Chạy trên Windows
+- **AIRI nói:** VieNeu TTS, 14 giọng có sẵn và clone giọng WAV.
+- **AIRI nghe:** faster-whisper nhận audio/microphone, trả văn bản theo chuẩn OpenAI.
+- **Riêng tư:** API chỉ lắng nghe tại `127.0.0.1`; audio không được gửi lên dịch vụ bên ngoài sau khi model đã tải xong.
 
-1. Cài **Python 3.10 64-bit** và chọn `Add Python to PATH` khi cài.
-2. Giải nén project.
-3. Double-click **`start-ui.bat`**.
-4. Đợi lần đầu cài package; AIRI Vietnamese Speech sẽ mở trong **cửa sổ app riêng**.
+## Chạy bằng một cú nhấp
 
-Để dừng app, chỉ cần đóng cửa sổ AIRI Vietnamese Speech.
+### Bản portable (dễ nhất)
 
-## Kết nối AIRI
+Mở `dist\AIRI Vietnamese Speech\AIRI Vietnamese Speech.exe`. Khi chuyển sang máy khác, hãy chép **nguyên thư mục** `AIRI Vietnamese Speech`, không chỉ file `.exe`.
 
-Trong OpenAI Compatible TTS của AIRI, điền:
+### Chạy từ mã nguồn
+
+1. Cài Python **3.10 64-bit** và bật `Add Python to PATH`.
+2. Nhấp đúp `start-ui.bat`.
+3. Lần đầu ứng dụng cài thư viện và tải model nên sẽ lâu. Các lần sau mở ngay, không chạy cài đặt lại.
+
+Nếu project được chép từ máy khác và báo `.venv` không hợp lệ, chỉ cần xóa/đổi tên thư mục `.venv`, sau đó chạy lại `start-ui.bat`.
+
+## Kết nối AIRI Desktop
+
+Dùng cùng thông tin này cho cả hai provider:
 
 ```text
-Base URL: http://127.0.0.1:23333/v1/
+Base URL: http://127.0.0.1:23333/v1
 API key:  airi-local
-Model:    vieneu-tts-v3-turbo
-Voice:    truc-ly
 ```
 
-Ngay trong UI app có thẻ **Kết nối AIRI** để sao chép các thông số này và xem AIRI đã gọi vào server hay chưa. Sau khi lưu cấu hình trong AIRI, bấm **Kiểm tra kết nối**; trạng thái chuyển xanh khi app nhận request thật từ AIRI.
+### Để AIRI nói (TTS)
 
-Bạn có thể dùng UI để xem ID chính xác của mọi voice. AIRI dùng ID (`truc-ly`), còn server tự đổi thành tên VieNeu (`Trúc Ly`). Voice clone sẽ có ID ổn định, ví dụ `giong-cua-toi`.
+1. Vào **Settings → Providers → Speech → OpenAI Compatible**.
+2. Model: `vieneu-tts-v3-turbo`.
+3. Vào **Settings → Modules → Speech**, chọn provider vừa tạo và voice, ví dụ `truc-ly`.
+4. Dùng phần Test Voice để kiểm tra.
 
-## Clone voice
+### Để AIRI nghe và chuyển lời nói vào AI (STT)
 
-Mở UI, nhập tên, chọn WAV và bấm **Clone voice**. WAV nên là một người nói rõ ràng, ít noise, dài khoảng 3–10 giây. Voice clone được lưu tại `~/.airi-vietnamese-speech/voices` và được nạp lại sau khi restart.
+1. Vào **Settings → Providers → Transcription → OpenAI Compatible**.
+2. Model: `whisper` như giao diện AIRI trong ảnh. Server cũng chấp nhận `whisper-1`, `base` và `faster-whisper-base`.
+3. Vào **Settings → Modules → Hearing**, chọn provider vừa tạo, chọn microphone và bấm **Start Monitoring**.
+4. AIRI thu mic → gọi `/v1/audio/transcriptions` → nhận văn bản → đưa văn bản vào cuộc trò chuyện AI.
 
-Lần chạy đầu, `start-ui.bat` tự cài PyTorch CPU cho tính năng clone (download lớn một lần). Nếu UI báo thiếu PyTorch, đóng app và chạy lại `start-ui.bat`. Chỉ clone giọng của bạn hoặc giọng bạn có quyền sử dụng.
+Trong cửa sổ app, nút **Sao chép cấu hình AIRI** sao chép toàn bộ giá trị trên. Trạng thái sẽ hiện endpoint cuối mà AIRI đã gọi.
 
-## Speech to Text
+## Tốc độ và model
 
-Phần STT dùng `faster-whisper`; model mặc định là `base` và chỉ tải ở lần chép lời đầu tiên. Nó chạy CPU INT8 để không cần cài CUDA/NVIDIA. Có thể đặt biến môi trường `AIRI_STT_MODEL` thành `tiny`, `small` hoặc model Whisper phù hợp khác trước khi chạy để đổi model.
+- Danh sách voice hiện ngay, không phải chờ VieNeu tải.
+- Lần chạy đầu nạp cả TTS và STT vào cache. Khi hai model hoàn tất, những lần mở sau bật chế độ Hugging Face offline và không kiểm tra mạng.
+- STT dùng CPU INT8, VAD và beam nhỏ để phản hồi nhanh trên máy không có NVIDIA.
+- Đặt `AIRI_PRELOAD_MODELS=0` nếu muốn tự tải model ở lần dùng đầu thay vì chuẩn bị nền.
+- Đặt `AIRI_FORCE_OFFLINE=1` để bắt buộc không dùng mạng ngay cả khi cache chưa đủ (model thiếu sẽ báo lỗi thay vì tải).
+- Đặt `AIRI_STT_MODEL=tiny` để nhanh/nhẹ hơn hoặc `small` để chính xác hơn trước khi mở app.
+- Bản chạy mã nguồn lưu dữ liệu tại `%USERPROFILE%\.airi-vietnamese-speech`; bản portable lưu trong thư mục `data` cạnh file `.exe` để có thể chép nguyên thư mục sang máy khác.
 
-## Build thành ứng dụng Windows
-
-1. Chạy `start-ui.bat` một lần để tạo môi trường và cài dependency.
-2. Đóng server.
-3. Chạy **`build-windows.bat`**.
-4. Bản portable nằm ở `dist\AIRI Vietnamese Speech\AIRI Vietnamese Speech.exe` và mở bằng cửa sổ app riêng, không cần mở trình duyệt.
-
-Chép nguyên thư mục `dist\AIRI Vietnamese Speech` khi chuyển máy, không chỉ riêng file `.exe`. Lần đầu chạy, VieNeu/Whisper vẫn có thể tải model về máy; vì vậy bản `--onedir` ổn định hơn `--onefile`.
-
-## API
+## API tương thích
 
 - `GET /health`
 - `GET /v1/models`
 - `GET /v1/voices`
-- `POST /v1/audio/speech`
+- `POST /v1/audio/speech` — OpenAI-compatible TTS
+- `POST /v1/audio/transcriptions` — OpenAI-compatible STT cho AIRI Hearing
+- `POST /api/transcribe` — STT dùng bởi giao diện local
 - `POST /api/voices/clone`
 - `DELETE /api/voices/{voice_id}`
-- `POST /api/transcribe`
+
+## Build Windows portable
+
+1. Chạy `start-ui.bat` một lần để hoàn tất môi trường.
+2. Đóng ứng dụng.
+3. Chạy `build-windows.bat`.
+4. Kết quả nằm tại `dist\AIRI Vietnamese Speech\AIRI Vietnamese Speech.exe`.
