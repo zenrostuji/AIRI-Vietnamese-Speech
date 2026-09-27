@@ -36,6 +36,7 @@ else:
     DATA_DIR = Path.home() / ".airi-vietnamese-speech"
 VOICE_DIR = DATA_DIR / "voices"
 VOICE_DB = DATA_DIR / "voices.json"
+ACTIVE_VOICE_FILE = DATA_DIR / "active-airi-voice.txt"
 VOICE_DIR.mkdir(parents=True, exist_ok=True)
 MODEL_STATE_DIR = DATA_DIR / "model-state"
 MODEL_STATE_DIR.mkdir(parents=True, exist_ok=True)
@@ -72,6 +73,23 @@ def voice_id(name: str) -> str:
 
 
 PRESET_BY_ID = {voice_id(name): name for name, _ in PRESET_VOICES}
+DEFAULT_VOICE_ID = "truc-ly"
+# AIRI/OpenAI compatible installations often retain one of these example or
+# legacy values. Keep them working instead of failing synthesis after upgrade.
+VOICE_ALIASES = {
+    "be7": DEFAULT_VOICE_ID,
+    "ado": DEFAULT_VOICE_ID,
+    "alloy": "truc-ly",
+    "nova": "ngoc-linh",
+    "shimmer": "doan-trang",
+    "coral": "mai-anh",
+    "sage": "thuc-doan",
+    "echo": "minh-duc",
+    "onyx": "thai-son",
+    "fable": "thanh-binh",
+    "ash": "xuan-vinh",
+    "verse": "quang-son",
+}
 
 
 class SpeechRequest(BaseModel):
@@ -92,6 +110,17 @@ def load_db() -> dict:
 
 
 voices = load_db()
+
+
+def load_active_voice() -> str:
+    try:
+        value = ACTIVE_VOICE_FILE.read_text(encoding="utf-8").strip()
+        return value if value in voices or value in PRESET_BY_ID else DEFAULT_VOICE_ID
+    except OSError:
+        return DEFAULT_VOICE_ID
+
+
+active_airi_voice = load_active_voice()
 engine: Optional[VieNeuAdapter] = None
 stt_engine = None
 _tts_init_lock = threading.RLock()
@@ -195,7 +224,24 @@ app = FastAPI(title=APP_NAME, version=APP_VERSION, lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=False, allow_methods=["*"], allow_headers=["*"])
 
 
+def resolve_voice_id(vid: str) -> str:
+    vid = vid.strip()
+    # AIRI 0.12 beta can stay stuck on either legacy ID. Treat both as a
+    # transport placeholder first, even when the user has cloned voices named
+    # `be7` or `ado`; the persisted active selection decides which clone wins.
+    if vid.lower() in {"be7", "ado"} and (active_airi_voice in voices or active_airi_voice in PRESET_BY_ID):
+        return active_airi_voice
+    # A user-created voice always wins, even when its ID matches an old AIRI or
+    # OpenAI example alias such as `be7`, `ado`, or `alloy`.
+    if vid in voices:
+        return vid
+    if vid in PRESET_BY_ID:
+        return vid
+    return VOICE_ALIASES.get(vid.lower(), vid)
+
+
 def vieneu_voice(vid: str) -> str:
+    vid = resolve_voice_id(vid)
     if vid in voices:
         return voices[vid]["vieneu_name"]
     if vid in PRESET_BY_ID:
@@ -203,6 +249,17 @@ def vieneu_voice(vid: str) -> str:
     if vid in PRESET_BY_ID.values():
         return vid
     raise HTTPException(400, f"Unknown voice '{vid}'")
+
+
+def voice_catalog() -> list[dict]:
+    descriptions = dict(PRESET_VOICES)
+    data = [{"id": vid, "name": name, "description": descriptions[name], "language": "vi-VN", "type": "preset"}
+            for vid, name in PRESET_BY_ID.items()]
+    preset_ids = {item["id"] for item in data}
+    data.extend({"id": vid, "name": item["name"], "description": "Giọng clone local",
+                 "language": "vi-VN", "type": "cloned"}
+                for vid, item in voices.items() if vid not in preset_ids)
+    return data
 
 
 def wav_bytes(audio) -> bytes:
@@ -244,6 +301,29 @@ async def read_audio(file: UploadFile) -> bytes:
     return data
 
 
+def validate_clone_wav(data: bytes) -> dict:
+    """Reject references that VieNeu would silently truncate or cannot clone well."""
+    import numpy as np
+    import soundfile as sf
+    try:
+        samples, sample_rate = sf.read(io.BytesIO(data), dtype="float32", always_2d=True)
+    except Exception as exc:
+        raise HTTPException(400, f"File WAV không hợp lệ: {exc}") from exc
+    duration = len(samples) / float(sample_rate or 1)
+    if duration < 3.0:
+        raise HTTPException(400, f"Mẫu giọng chỉ dài {duration:.1f} giây. Hãy dùng đoạn rõ từ 3–10 giây.")
+    if duration > 12.0:
+        raise HTTPException(400, f"Mẫu giọng dài {duration:.1f} giây. VieNeu chỉ dùng 8 giây đầu; hãy cắt một đoạn sạch 3–10 giây rồi clone lại.")
+    mono = samples.mean(axis=1)
+    rms = float(np.sqrt(np.mean(np.square(mono)))) if mono.size else 0.0
+    peak = float(np.max(np.abs(mono))) if mono.size else 0.0
+    if rms < 0.006:
+        raise HTTPException(400, "Mẫu giọng quá nhỏ hoặc chủ yếu là im lặng. Hãy dùng đoạn nói rõ, gần micro hơn.")
+    if peak >= 0.999:
+        raise HTTPException(400, "Mẫu giọng bị vỡ/clipping. Hãy giảm âm lượng thu rồi clone lại.")
+    return {"duration": round(duration, 2), "sample_rate": sample_rate, "channels": samples.shape[1]}
+
+
 @app.get("/health")
 def health():
     with _state_lock:
@@ -268,7 +348,9 @@ def connection_status(authorization: Optional[str] = Header(default=None)):
     return {"server": "ready", "base_url": "http://127.0.0.1:23333/v1", "tts_model": TTS_MODEL_ID,
             "stt_model": "whisper", "offline": OFFLINE_MODE,
             "cache_ready": TTS_READY_MARKER.exists() and STT_READY_MARKER.exists(),
-            "engines": state, "last_airi_request": last_airi_request}
+            "engines": state, "last_airi_request": last_airi_request,
+            "data_dir": str(DATA_DIR), "voice_dir": str(VOICE_DIR),
+            "active_airi_voice": active_airi_voice}
 
 
 @app.get("/api/debug/voices")
@@ -305,13 +387,30 @@ def models(authorization: Optional[str] = Header(default=None), user_agent: Opti
 def list_voices(authorization: Optional[str] = Header(default=None), user_agent: Optional[str] = Header(default=None),
                 x_airi_speech_ui: Optional[str] = Header(default=None)):
     auth(authorization); note_airi_request("GET /v1/voices", user_agent, x_airi_speech_ui)
-    descriptions = dict(PRESET_VOICES)
-    data = [{"id": vid, "name": name, "description": descriptions[name], "language": "vi-VN", "type": "preset"}
-            for vid, name in PRESET_BY_ID.items()]
-    preset_ids = {item["id"] for item in data}
-    data.extend({"id": vid, "name": item["name"], "language": "vi-VN", "type": "cloned"}
-                for vid, item in voices.items() if vid not in preset_ids)
-    return {"object": "list", "data": data}
+    data = voice_catalog()
+    # `data` is OpenAI-list compatible; `voices` helps clients using the other
+    # common catalog convention without requiring a second server.
+    return {"object": "list", "data": data, "voices": data,
+            "default_voice": DEFAULT_VOICE_ID, "model": TTS_MODEL_ID}
+
+
+@app.get("/voices")
+@app.get("/v1/audio/voices")
+def compatible_voice_list(authorization: Optional[str] = Header(default=None),
+                          user_agent: Optional[str] = Header(default=None)):
+    auth(authorization); note_airi_request("GET voice catalog", user_agent, None)
+    data = voice_catalog()
+    return {"object": "list", "data": data, "voices": data,
+            "default_voice": DEFAULT_VOICE_ID, "model": TTS_MODEL_ID}
+
+
+@app.get("/api/airi/voices")
+def airi_voice_list(authorization: Optional[str] = Header(default=None)):
+    auth(authorization)
+    return [{"id": item["id"], "name": item["name"], "description": item.get("description", ""),
+             "previewURL": "", "languages": [{"code": "vi-VN", "title": "Tiếng Việt"}],
+             "provider": "openai-compatible-audio-speech", "gender": "neutral",
+             "compatibleModels": [TTS_MODEL_ID]} for item in voice_catalog()]
 
 
 @app.post("/v1/audio/speech")
@@ -328,8 +427,10 @@ async def speech(request: SpeechRequest, authorization: Optional[str] = Header(d
         raise
     except Exception as exc:
         raise HTTPException(500, f"Speech synthesis failed: {exc}") from exc
+    resolved_voice = resolve_voice_id(request.voice)
     return Response(audio, media_type="audio/wav", headers={"Content-Disposition": 'inline; filename="airi-speech.wav"',
-                    "X-AIRI-Voice": request.voice, "X-AIRI-Model": TTS_MODEL_ID})
+                    "X-AIRI-Voice": resolved_voice, "X-AIRI-Requested-Voice": request.voice,
+                    "X-AIRI-Model": TTS_MODEL_ID})
 
 
 async def perform_transcription(file: UploadFile, model: str, language: str, task: str, response_format: str):
@@ -380,6 +481,7 @@ async def clone_voice(name: str = Form(...), file: UploadFile = File(...),
     if not vid:
         raise HTTPException(400, "Invalid voice name")
     data, target = await read_audio(file), VOICE_DIR / f"{vid}.wav"
+    audio_info = await run_in_threadpool(validate_clone_wav, data)
     target.write_bytes(data)
     try:
         # Keep the lock inside a worker thread; never block the async event loop.
@@ -392,13 +494,31 @@ async def clone_voice(name: str = Form(...), file: UploadFile = File(...),
     except Exception as exc:
         target.unlink(missing_ok=True)
         raise HTTPException(500, f"VieNeu voice cloning failed: {exc}") from exc
+    global active_airi_voice
     voices[vid] = {"id": vid, "name": name, "vieneu_name": name, "file": str(target)}
     save_db()
-    return {"ok": True, "voice": {"id": vid, "name": name, "language": "vi-VN", "type": "cloned"}}
+    active_airi_voice = vid
+    ACTIVE_VOICE_FILE.write_text(vid, encoding="utf-8")
+    return {"ok": True, "voice": {"id": vid, "name": name, "language": "vi-VN", "type": "cloned"},
+            "file": str(target),
+            "reference": audio_info}
+
+
+@app.post("/api/voices/{vid}/activate")
+def activate_voice(vid: str, authorization: Optional[str] = Header(default=None)):
+    global active_airi_voice
+    auth(authorization)
+    if vid not in voices and vid not in PRESET_BY_ID:
+        raise HTTPException(404, "Voice not found")
+    active_airi_voice = vid
+    ACTIVE_VOICE_FILE.write_text(vid, encoding="utf-8")
+    return {"ok": True, "active_airi_voice": vid,
+            "note": "AIRI beta requests using be7/ado will use this voice"}
 
 
 @app.delete("/api/voices/{vid}")
 async def delete_voice(vid: str, authorization: Optional[str] = Header(default=None)):
+    global active_airi_voice
     auth(authorization)
     item = voices.get(vid)
     if not item:
@@ -410,6 +530,9 @@ async def delete_voice(vid: str, authorization: Optional[str] = Header(default=N
     voices.pop(vid, None)
     Path(item["file"]).unlink(missing_ok=True)
     save_db()
+    if active_airi_voice == vid:
+        active_airi_voice = DEFAULT_VOICE_ID
+        ACTIVE_VOICE_FILE.write_text(active_airi_voice, encoding="utf-8")
     return {"ok": True, "deleted": vid}
 
 
